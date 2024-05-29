@@ -151,8 +151,8 @@ def main():
     print(f"Prepared message: {message}")
 
     # Replace with your device's address and characteristic UUID
-    YOUR_DEVICE_ADDRESS = "30:58:89:41:37:6C"
-    YOUR_CHARACTERISTIC_UUID = "0000ae01-0000-1000-8000-00805f9b34fb"  # Example UUID
+    YOUR_DEVICE_ADDRESS = ""
+    YOUR_CHARACTERISTIC_UUID = ""  # Example UUID
 
     # Send the results via Bluetooth
     asyncio.run(send_bluetooth_message(message, YOUR_DEVICE_ADDRESS, YOUR_CHARACTERISTIC_UUID))
