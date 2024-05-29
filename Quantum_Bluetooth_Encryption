@@ -1,0 +1,168 @@
+import asyncio
+from bleak import BleakScanner, BleakClient
+import pythoncom
+import threading
+
+# Import necessary libraries from Qiskit
+from qiskit import QuantumCircuit, transpile
+from qiskit_aer import Aer
+from qiskit.visualization import plot_bloch_multivector, plot_histogram
+import numpy as np
+
+def create_channel():
+    # Initialize a quantum circuit with 9 qubits
+    qc = QuantumCircuit(9)
+
+    # Apply Hadamard gates to the first three qubits
+    qc.h(0)
+    qc.h(1)
+    qc.h(2)
+
+    # Apply CNOT gates as described
+    qc.cx(0, 4)  # Control: qubit 0, Target: qubit 4
+    qc.cx(0, 5)  # Control: qubit 0, Target: qubit 5
+    qc.cx(1, 6)  # Control: qubit 1, Target: qubit 6
+    qc.cx(2, 3)  # Control: qubit 2, Target: qubit 3
+    qc.cx(2, 7)  # Control: qubit 2, Target: qubit 7
+    qc.cx(2, 8)  # Control: qubit 2, Target: qubit 8
+
+    return qc
+
+def create_channel_with_classical():
+    # Initialize a quantum circuit with 9 qubits and 9 classical bits
+    qc = QuantumCircuit(9, 9)
+
+    # Apply Hadamard gates to the first three qubits
+    qc.h(0)
+    qc.h(1)
+    qc.h(2)
+
+    # Apply CNOT gates as described
+    qc.cx(0, 4)  # Control: qubit 0, Target: qubit 4
+    qc.cx(0, 5)  # Control: qubit 0, Target: qubit 5
+    qc.cx(1, 6)  # Control: qubit 1, Target: qubit 6
+    qc.cx(2, 3)  # Control: qubit 2, Target: qubit 3
+    qc.cx(2, 7)  # Control: qubit 2, Target: qubit 7
+    qc.cx(2, 8)  # Control: qubit 2, Target: qubit 8
+
+    return qc
+
+def prepare_state(qc, m, n):
+    # Alice's unknown two-qubit state to teleport
+    qc.initialize([m, 0, 0, n], [0, 1])
+    return qc
+
+def perform_measurements(qc):
+    # Basis for Alice's first measurement
+    qc.cx(0, 4)
+    qc.cx(1, 5)
+    qc.h(0)
+    qc.h(1)
+    qc.measure([0, 1, 4, 5], [0, 1, 2, 3])
+
+    # Basis for Alice's second measurement
+    qc.cx(2, 6)
+    qc.cx(3, 7)
+    qc.h(2)
+    qc.h(3)
+    qc.measure([6, 7], [4, 5])
+
+    return qc
+
+def interpret_statevector(statevector):
+    print("\nInterpreting Statevector:")
+    statevector_array = np.asarray(statevector)
+    for i, amplitude in enumerate(statevector_array):
+        if np.abs(amplitude) > 1e-6:  # Ignore very small amplitudes
+            probability = np.abs(amplitude)**2
+            print(f"State |{i:03b}>: Amplitude = {amplitude}, Probability = {probability:.4f}")
+
+def compare_measurements_to_probabilities(counts, statevector):
+    print("\nComparing Measurement Results to Probabilities:")
+    total_counts = sum(counts.values())
+    statevector_array = np.asarray(statevector)
+    for state, count in counts.items():
+        probability = np.abs(statevector_array[int(state, 2)])**2
+        measured_prob = count / total_counts
+        print(f"State |{state}>: Measured Probability = {measured_prob:.4f}, Theoretical Probability = {probability:.4f}")
+
+def simulate_circuit(qc, qc_no_measurement, m, n):
+    # Use the Aer statevector simulator
+    statevector_simulator = Aer.get_backend('statevector_simulator')
+
+    # Transpile the circuit for the Aer simulator
+    compiled_circuit_no_measurement = transpile(qc_no_measurement, statevector_simulator)
+
+    # Run the simulation and get the results
+    result_no_measurement = statevector_simulator.run(compiled_circuit_no_measurement).result()
+
+    # Get the final statevector of the system
+    statevector = result_no_measurement.get_statevector(compiled_circuit_no_measurement)
+    print("Statevector:", statevector)
+
+    # Interpret the statevector
+    interpret_statevector(statevector)
+
+    # Visualize the statevector
+    plot_bloch_multivector(statevector).show()
+
+    # Create the quantum channel for measurement simulation (with classical bits)
+    qc_measure = create_channel_with_classical()
+    qc_measure = prepare_state(qc_measure, m, n)
+    qc_measure = perform_measurements(qc_measure)
+
+    # Now run the circuit with measurements
+    aer_simulator = Aer.get_backend('aer_simulator')
+    compiled_circuit = transpile(qc_measure, aer_simulator)
+    result = aer_simulator.run(compiled_circuit, shots=1024).result()
+
+    # Get the measurement results
+    counts = result.get_counts(compiled_circuit)
+    print("Measurement results:", counts)
+    compare_measurements_to_probabilities(counts, statevector)
+    plot_histogram(counts).show()
+
+    # Return results for Bluetooth transmission
+    return statevector, counts
+
+async def send_bluetooth_message(message, address, characteristic_uuid):
+    print(f"Connecting to {address}...")
+    async with BleakClient(address) as client:
+        print("Connected. Sending message...")
+        await client.write_gatt_char(characteristic_uuid, message.encode('utf-8'))
+        print("Sent message via Bluetooth")
+
+def main():
+    # Constants
+    alpha = np.cos(np.pi/4)
+    beta = np.sin(np.pi/4)
+    m = 1/np.sqrt(2)
+    n = 1/np.sqrt(2)
+
+    # Create the quantum channel for statevector simulation (without classical bits)
+    qc_statevector = create_channel()
+    qc_statevector = prepare_state(qc_statevector, m, n)
+
+    # Simulate the circuit
+    statevector, counts = simulate_circuit(qc_statevector, qc_statevector.copy(), m, n)
+
+    # Prepare the message to send via Bluetooth
+    message = f"Statevector: {statevector}\nMeasurement results: {counts}"
+    print(f"Prepared message: {message}")
+
+    # Replace with your device's address and characteristic UUID
+    YOUR_DEVICE_ADDRESS = "30:58:89:41:37:6C"
+    YOUR_CHARACTERISTIC_UUID = "0000ae01-0000-1000-8000-00805f9b34fb"  # Example UUID
+
+    # Send the results via Bluetooth
+    asyncio.run(send_bluetooth_message(message, YOUR_DEVICE_ADDRESS, YOUR_CHARACTERISTIC_UUID))
+
+if __name__ == "__main__":
+    def run_in_mta_thread():
+        pythoncom.CoInitializeEx(pythoncom.COINIT_MULTITHREADED)
+        main()
+        pythoncom.CoUninitialize()
+
+    mta_thread = threading.Thread(target=run_in_mta_thread)
+    mta_thread.start()
+    mta_thread.join()
