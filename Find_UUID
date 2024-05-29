@@ -1,0 +1,28 @@
+import asyncio
+from bleak import BleakScanner, BleakClient
+
+async def discover():
+    print("Scanning for devices...")
+    devices = await BleakScanner.discover()
+    for device in devices:
+        print(f"{device.address}: {device.name}")
+
+async def explore_services(address):
+    print(f"Exploring services for device {address}...")
+    async with BleakClient(address) as client:
+        services = await client.get_services()
+        for service in services:
+            print(f"Service: {service.uuid}")
+            for characteristic in service.characteristics:
+                print(f"  Characteristic: {characteristic.uuid}")
+
+async def main():
+    await discover()
+
+    # Replace with your device's address after discovering devices
+    device_address = ""  # KS05-68C85C
+
+    await explore_services(device_address)
+
+if __name__ == "__main__":
+    asyncio.run(main())
