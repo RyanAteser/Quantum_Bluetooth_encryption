@@ -20,7 +20,7 @@ async def main():
     await discover()
 
     # Replace with your device's address after discovering devices
-    device_address = ""  # KS05-68C85C
+    device_address = ""  
 
     await explore_services(device_address)
 
